@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Spotify Premium
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      2.0
+// @version      2.1
 // @description  Premium state, no ads and no upsell UI in the Spotify web player (own implementation), desktop and mobile player
 // @author       realteamnet
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
@@ -23,7 +23,7 @@ Parts: src/lib/client.js, src/lib/response-rewrite.js, src/lib/bundle-patcher.js
 (function () {
 'use strict'
 
-const BUILD = {"script":"OWN","platform":"ALL","browser":"VM","version":"2.0"}
+const BUILD = {"script":"OWN","platform":"ALL","browser":"VM","version":"2.1"}
 const TAG = '[SpotifyPremium]'
 
 // ── lib/client: player version and page helpers ──
@@ -400,6 +400,13 @@ const OWN_MOBILE = {
         key: 'sessionProduct', anchor: '.productState}', required: true,
         match: '(case [\\w$]+:return\\{\\.\\.\\.[\\w$]+,product:)([\\w$]+)\\.productState\\}',
         replace: `$1{...$2.productState,${Object.entries(PREMIUM_STATE).map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',')}}}`,
+    }, {
+        // Playback device registration (Harmony): `type:h.type??X.SMARTPHONE,name:"Mobile Web Player"` → COMPUTER.
+        // Spotify applies its mobile free-tier rules (shuffle-only next/back) to smartphone devices; the desktop
+        // player registers as a computer. Experimental: whether the server keys only on this is unverified
+        key: 'deviceType', anchor: 'name:"Mobile Web Player"', required: true,
+        match: '(type:[\\w$]+\\.type\\?\\?(?:[\\w$]+\\.)+)SMARTPHONE(,name:"Mobile Web Player")',
+        replace: '$1COMPUTER$2',
     }],
 
     css: '[data-testid="premium-banner"],[data-testid="upsell-download-app-button"]{display:none!important}',
