@@ -1,30 +1,28 @@
 // ==UserScript==
-// @name         Spotify Premium (STANDALONE, DESKTOP)
+// @name         Spotify Premium (MINI, Hermit)
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      2.0
-// @description  tromoSM/SpotifyPremiumPatch inject.js converted into a single userscript (desktop web player)
+// @version      2.1
+// @description  tromoSM/SpotifyPremiumPatch inject.js converted into a single userscript, desktop and mobile player (Hermit)
 // @author       realteamnet (based on tromoSM/SpotifyPremiumPatch)
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
-// @downloadURL  https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-STANDALONE-DESKTOP.user.js
-// @updateURL    https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-STANDALONE-DESKTOP.user.js
+// @downloadURL  https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MINI-HERMIT.user.js
+// @updateURL    https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MINI-HERMIT.user.js
 // @icon         https://raw.githubusercontent.com/tromoSM/SpotifyPremiumPatch/main/assets/icon_48.png
 // @license      Apache-2.0
 // @match        https://open.spotify.com/*
 // @run-at       document-start
-// @inject-into  page
-// @grant        none
 // ==/UserScript==
 
 /*
 Generated file: built from src/ parts by tools/build.mjs (development repo). Do not edit by hand.
 Based on: https://github.com/tromoSM/SpotifyPremiumPatch (Apache-2.0): inject.js, ported
-Parts: src/lib/response-rewrite.js, src/standalone/desktop.js, src/standalone/main.js
+Parts: src/lib/response-rewrite.js, src/standalone/desktop.js, src/standalone/mobile.js, src/standalone/main.js
 */
 (function () {
 'use strict'
 
-const BUILD = {"script":"STANDALONE","platform":"DESKTOP","browser":"VM","version":"2.0"}
-const TAG = '[SpotifyPremium-STANDALONE-DESKTOP]'
+const BUILD = {"script":"MINI","platform":"ALL","browser":"HERMIT","version":"2.1"}
+const TAG = '[SpotifyPremium-MINI]'
 
 // ── lib/response-rewrite: rewrite JSON API responses through fetch and XMLHttpRequest ──
 // A rewriter is { label, url: RegExp, body?: (requestBody: string) => boolean, patch: (json) => json | null }.
@@ -119,7 +117,7 @@ function installResponseRewriters(rewriters) {
 // Same request filter, fields and log lines as refs/SpotifyPremiumPatch/inject.js (docs/standalone.md).
 const OPERATIONS = ['accountAttributes'] /*add profileattr to arr for username and region editing*/
 
-const REWRITERS = [{
+const DESKTOP_REWRITERS = [{
     label: 'accountAttributes',
     url: /api-partner\.spotify\.com\/pathfinder\//,
     body: body => { try { return OPERATIONS.includes(JSON.parse(body).operationName) } catch { return false } },
@@ -143,6 +141,26 @@ const REWRITERS = [{
     },
 }]
 
+// ── standalone/mobile: tromoSM's approach applied to the mobile web player ──
+// inject.js only knows the desktop accountAttributes query. The mobile player reads its product state from
+// @webgate/melody/v1/product_state instead (docs/web-player.md → "Mobile web player"), so the same idea (rewrite the
+// account response) is applied there. Mobile selectors compare product === "PREMIUM" and catalogue === "premium".
+const MOBILE_REWRITERS = [{
+    label: 'product_state',
+    url: /\/melody\/v1\/product_state(?:\?|$)/,
+    patch(state) {
+        if (!state || typeof state !== 'object') {
+            console.warn(`${TAG} couldnt find the right object`)
+            return null
+        }
+        const oldProduct = state.product
+        Object.assign(state, { product: 'PREMIUM', catalogue: 'premium', ads: '0', 'on-demand': '1' })
+        console.log(`${TAG} modified account type from ${oldProduct} to ${state.product}`)
+        return state
+    },
+}]
+
 // ── standalone/main ──
-installResponseRewriters(REWRITERS)
+// Both players: their response URLs don't overlap, so whichever the server serves is covered
+installResponseRewriters([...DESKTOP_REWRITERS, ...MOBILE_REWRITERS])
 })()

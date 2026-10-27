@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Spotify Premium (MOBILE)
+// @name         Spotify Premium
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      1.3
-// @description  Premium state, no ads and no upsell UI in the Spotify web player (own implementation) (mobile web player)
+// @version      2.0
+// @description  Premium state, no ads and no upsell UI in the Spotify web player (own implementation), desktop and mobile player
 // @author       realteamnet
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
-// @downloadURL  https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MOBILE.user.js
-// @updateURL    https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MOBILE.user.js
+// @downloadURL  https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium.user.js
+// @updateURL    https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium.user.js
 // @icon         https://raw.githubusercontent.com/tromoSM/SpotifyPremiumPatch/main/assets/icon_48.png
 // @license      MIT
 // @match        https://open.spotify.com/*
@@ -18,13 +18,13 @@
 /*
 Generated file: built from src/ parts by tools/build.mjs (development repo). Do not edit by hand.
 Based on: Own implementation. Hints only (no code) from https://github.com/tromoSM/SpotifyPremiumPatch and https://github.com/SpotX-Official/SpotX
-Parts: src/lib/client.js, src/lib/response-rewrite.js, src/lib/bundle-patcher.js, src/platform/mobile.js, src/own/mobile.js, src/own/main.js
+Parts: src/lib/client.js, src/lib/response-rewrite.js, src/lib/bundle-patcher.js, src/platform/players.js, src/own/desktop.js, src/own/mobile.js, src/own/main.js
 */
 (function () {
 'use strict'
 
-const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.3"}
-const TAG = '[SpotifyPremium-MOBILE]'
+const BUILD = {"script":"OWN","platform":"ALL","browser":"VM","version":"2.0"}
+const TAG = '[SpotifyPremium]'
 
 // ── lib/client: player version and page helpers ──
 
@@ -180,7 +180,9 @@ function installResponseRewriters(rewriters) {
 // Access-Control-Allow-Origin: *), patched as text and run from a blob: URL (CSP allows blob:, not inline).
 // Other chunks call self.rspackChunk.push([ids, modules]): the array is created here first with an accessor
 // `push`, so every module factory is patched (toString → regex → eval) before the runtime registers it.
-// A rule is { key, match, replace, anchor?, required? }:
+// The player is detected from the entry <script> (entries: {desktop: RegExp, mobile: RegExp}); after that only rules
+// for that player (rule.player) or for any player (no player) apply. Before it is known, all rules apply.
+// A rule is { key, match, replace, anchor?, required?, player? }:
 //   match/replace  regex source + replacement with $1…$9 (arrays = several patches under one key, like SpotX)
 //   anchor         a stable literal near the target (method name, string, testid). tools/doctor.mjs shows the code
 //                  around it when the rule stops matching, so repatching is a regex edit
@@ -188,11 +190,11 @@ function installResponseRewriters(rewriters) {
 
 function compileRules(list, flags = 'g') {
     const out = []
-    for (const { key, match, replace, anchor, required } of list) {
+    for (const { key, match, replace, anchor, required, player } of list) {
         const matches = [].concat(match), replaces = [].concat(replace)
         matches.forEach((m, i) => {
             try {
-                out.push({ key: matches.length > 1 ? `${key}[${i}]` : key, re: new RegExp(m, flags), replace: replaces[i] ?? '', anchor, required: !!required })
+                out.push({ key: matches.length > 1 ? `${key}[${i}]` : key, re: new RegExp(m, flags), replace: replaces[i] ?? '', anchor, required: !!required, player })
             } catch (er) {
                 console.warn(`${TAG} skipping ${key}: regex not valid in JS`, er.message)
             }
@@ -201,12 +203,14 @@ function compileRules(list, flags = 'g') {
     return out
 }
 
-function installBundlePatcher({ entry, rules }) {
+function installBundlePatcher({ entries, rules }) {
     const stats = Object.fromEntries(rules.map(r => [r.key, 0]))
+    let player = null
+    const active = () => rules.filter(r => !player || !r.player || r.player === player)
 
     function patchSource(src) {
         let out = src
-        for (const r of rules) {
+        for (const r of active()) {
             r.re.lastIndex = 0
             if (!r.re.test(out)) continue
             r.re.lastIndex = 0
@@ -276,8 +280,8 @@ function installBundlePatcher({ entry, rules }) {
             .then(text => {
                 const out = patchSource(text).replace(/\n\/\/# sourceMappingURL=.*$/, '')
                 insertScript(URL.createObjectURL(new Blob([out], { type: 'text/javascript' })))
-                console.log(`${TAG} patched ${src.split('/').pop()} in ${Math.round(performance.now() - started)} ms`, stats)
-                const missing = rules.filter(r => r.required && !stats[r.key]).map(r => r.key)
+                console.log(`${TAG} patched ${src.split('/').pop()} in ${Math.round(performance.now() - started)} ms (${player} player)`, Object.fromEntries(active().map(r => [r.key, stats[r.key]])))
+                const missing = active().filter(r => r.required && !stats[r.key]).map(r => r.key)
                 if (missing.length) console.warn(`${TAG} Spotify changed: no match for ${missing.join(', ')}. Repatch: node tools/doctor.mjs (docs/repatching.md)`)
             })
             .catch(er => {
@@ -286,9 +290,14 @@ function installBundlePatcher({ entry, rules }) {
             })
     }
 
-    const isEntry = node => node.nodeName === 'SCRIPT' && !node.dataset?.sp && entry.test(node.src ?? '')
+    // Which player an entry <script> belongs to, or undefined
+    const entryOf = node => node.nodeName === 'SCRIPT' && !node.dataset?.sp
+        ? Object.keys(entries).find(name => entries[name].test(node.src ?? '')) : undefined
+    const isEntry = node => !!entryOf(node)
     // Injected late (e.g. ViolentMonkey without "Synchronous page mode"): the entry already ran unpatched
-    const late = runtimeStarted || [...document.scripts].some(isEntry)
+    const parsed = [...document.scripts].find(isEntry)
+    if (parsed) player = entryOf(parsed)
+    const late = runtimeStarted || !!parsed
     if (late) console.warn(`${TAG} injected after the entry bundle was parsed: the code patches won't apply, only the response layer`)
 
     // Firefox fires beforescriptexecute; elsewhere the MutationObserver catches the tag before it has loaded
@@ -296,7 +305,9 @@ function installBundlePatcher({ entry, rules }) {
     new MutationObserver(mutations => {
         for (const m of mutations) {
             for (const node of m.addedNodes) {
-                if (!isEntry(node)) continue
+                const name = entryOf(node)
+                if (!name) continue
+                player = name
                 node.type = 'javascript/blocked'   // stops a parser-inserted script before it runs
                 node.remove()
                 loadPatchedEntry(node.src)
@@ -304,12 +315,71 @@ function installBundlePatcher({ entry, rules }) {
         }
     }).observe(document, { childList: true, subtree: true })
 
-    return { late, stats, patchSource, rules: rules.map(r => ({ key: r.key, match: r.re.source, anchor: r.anchor, required: r.required })) }
+    return {
+        late, stats, patchSource,
+        get player() { return player },
+        rules: rules.map(r => ({ key: r.key, match: r.re.source, anchor: r.anchor, required: r.required, player: r.player })),
+    }
 }
 
-// ── platform/mobile: the mobile web player (served to mobile user agents, e.g. Android / Hermit) ──
-// docs/web-player.md → "Mobile web player"
-const ENTRY = /\/cdn\/build\/mobile-web-player\/mobile-web-player\.[0-9a-f]+\.js(?:\?|$)/
+// ── platform/players: the entry bundle of each player. Spotify's server picks the player from the user agent ──
+// docs/web-player.md → "Page", "Bundler" and "Mobile web player"
+const PLAYERS = {
+    desktop: /\/cdn\/build\/web-player\/web-player\.[0-9a-f]+\.js(?:\?|$)/,
+    mobile: /\/cdn\/build\/mobile-web-player\/mobile-web-player\.[0-9a-f]+\.js(?:\?|$)/,
+}
+
+// ── own/desktop: what to change in the desktop web player ──
+// Targets are described in docs/web-player.md → "What is where". Written for this repo; SpotX's patches.json was
+// used only as a hint for which parts of the client matter.
+
+const OWN_DESKTOP = {
+    // Response layer: the product state is built from this GraphQL query, so the client sees premium from the start
+    rewriters: [{
+        label: 'accountAttributes',
+        url: /^https:\/\/api-partner\.spotify\.com\/pathfinder\//,
+        body: body => { try { return JSON.parse(body).operationName === 'accountAttributes' } catch { return false } },
+        patch(json) {
+            const account = json?.data?.me?.account
+            if (!account?.attributes) return null
+            account.product = 'PREMIUM'
+            Object.assign(account.attributes, { catalogue: 'premium', ads: false, onDemand: true })
+            return json
+        },
+    }],
+
+    // Code layer: the same state enforced inside the player, plus the ad and upsell switches
+    rules: [
+        {
+            key: 'productState', anchor: '_fetchProductState', required: true,   // class mx: async _fetchProductState(e){…} → merge premium pairs into its result
+            match: 'async _fetchProductState\\(([\\w$]+)\\)\\{',
+            replace: 'async _fetchProductState($1){return Object.assign(await this._spFetchProductState($1),{ads:"0",catalogue:"premium",product:"premium","on-demand":"1"})}async _spFetchProductState($1){',
+        },
+        {
+            key: 'adsReducer', anchor: 'setAdsEnabled:', required: true,     // root slice: setAdsEnabled:e=>{e.adsEnabled=!0} → ads can never be switched on
+            match: '(setAdsEnabled:([\\w$]+)=>\\{\\2\\.adsEnabled=)!0',
+            replace: '$1!1',
+        },
+        {
+            key: 'premiumReducer', anchor: 'setPremium:', required: true, // root slice: setPremium:(e,t)=>{e.isPremium=t.payload} → always true
+            match: '(setPremium:\\(([\\w$]+),[\\w$]+\\)=>\\{\\2\\.isPremium=)[\\w$]+\\.payload',
+            replace: '$1!0',
+        },
+        {
+            key: 'hptoReducer', anchor: 'setHptoHidden:', required: true,    // root slice: setHptoHidden → always hidden (home page takeover ad)
+            match: '(setHptoHidden:\\(([\\w$]+),[\\w$]+\\)=>\\{\\2\\.isHptoHidden=)[\\w$]+\\.payload',
+            replace: '$1!0',
+        },
+        {
+            key: 'upgradeMenu', anchor: '"loggedin_upgrade_menu"', required: true,    // profile menu item: ({divider:e})=>{let t=(0,x.D)("loggedin_upgrade_menu")… → null
+            match: '(=>\\{)(let [\\w$]+=\\(0,[\\w$.]+\\)\\("loggedin_upgrade_menu"\\))',
+            replace: '$1return null;$2',
+        },
+    ],
+
+    // UI layer: hide instead of patching shared breakpoint tokens
+    css: '[data-testid="upgrade-button"]{display:none!important}',
+}
 
 // ── own/mobile: what to change in the mobile web player ──
 // Targets are described in docs/web-player.md → "Mobile web player". The mobile selectors compare
@@ -317,7 +387,7 @@ const ENTRY = /\/cdn\/build\/mobile-web-player\/mobile-web-player\.[0-9a-f]+\.js
 
 const PREMIUM_STATE = { product: 'PREMIUM', catalogue: 'premium', ads: '0', 'on-demand': '1' }
 
-const OWN = {
+const OWN_MOBILE = {
     // Response layer: the player SDK GETs @webgate/melody/v1/product_state (spclient) with fetch
     rewriters: [{
         label: 'product_state',
@@ -336,11 +406,21 @@ const OWN = {
 }
 
 // ── own/main ──
-installResponseRewriters(OWN.rewriters)
-const patcher = installBundlePatcher({ entry: ENTRY, rules: compileRules(OWN.rules) })
-addStyle(OWN.css)
-window.SpotifyPremium = { build: BUILD, version: clientVersion(), late: patcher.late, rules: patcher.rules, stats: patcher.stats, patchSource: patcher.patchSource }
-console.log(`${TAG} active for client ${window.SpotifyPremium.version || 'unknown'}`)
+// One script for both players: the server picks the player, the patcher detects it from the entry <script>.
+// Response rewriters and CSS cover both (their URLs and testids don't overlap); code rules are tagged per player.
+const OWN = { desktop: OWN_DESKTOP, mobile: OWN_MOBILE }
+installResponseRewriters(Object.values(OWN).flatMap(o => o.rewriters))
+const patcher = installBundlePatcher({
+    entries: PLAYERS,
+    rules: compileRules(Object.entries(OWN).flatMap(([player, o]) => o.rules.map(r => ({ ...r, player })))),
+})
+addStyle(Object.values(OWN).map(o => o.css).join(''))
+window.SpotifyPremium = {
+    build: BUILD, late: patcher.late, rules: patcher.rules, stats: patcher.stats, patchSource: patcher.patchSource,
+    get player() { return patcher.player },
+    get version() { return clientVersion() },   // appServerConfig is parsed after document-start
+}
+console.log(`${TAG} active: waiting for the player`)
 
 // Started too late: only the response layer works. Say which setting fixes it, when the manager has one
 if (patcher.late) {

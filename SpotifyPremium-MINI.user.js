@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Spotify Premium (STANDALONE, MOBILE)
+// @name         Spotify Premium (MINI)
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      2.0
-// @description  tromoSM/SpotifyPremiumPatch inject.js converted into a single userscript (mobile web player)
+// @version      2.1
+// @description  tromoSM/SpotifyPremiumPatch inject.js converted into a single userscript, desktop and mobile player
 // @author       realteamnet (based on tromoSM/SpotifyPremiumPatch)
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
-// @downloadURL  https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-STANDALONE-MOBILE.user.js
-// @updateURL    https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-STANDALONE-MOBILE.user.js
+// @downloadURL  https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MINI.user.js
+// @updateURL    https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MINI.user.js
 // @icon         https://raw.githubusercontent.com/tromoSM/SpotifyPremiumPatch/main/assets/icon_48.png
 // @license      Apache-2.0
 // @match        https://open.spotify.com/*
@@ -18,13 +18,13 @@
 /*
 Generated file: built from src/ parts by tools/build.mjs (development repo). Do not edit by hand.
 Based on: https://github.com/tromoSM/SpotifyPremiumPatch (Apache-2.0): inject.js, ported
-Parts: src/lib/response-rewrite.js, src/standalone/mobile.js, src/standalone/main.js
+Parts: src/lib/response-rewrite.js, src/standalone/desktop.js, src/standalone/mobile.js, src/standalone/main.js
 */
 (function () {
 'use strict'
 
-const BUILD = {"script":"STANDALONE","platform":"MOBILE","browser":"VM","version":"2.0"}
-const TAG = '[SpotifyPremium-STANDALONE-MOBILE]'
+const BUILD = {"script":"MINI","platform":"ALL","browser":"VM","version":"2.1"}
+const TAG = '[SpotifyPremium-MINI]'
 
 // ── lib/response-rewrite: rewrite JSON API responses through fetch and XMLHttpRequest ──
 // A rewriter is { label, url: RegExp, body?: (requestBody: string) => boolean, patch: (json) => json | null }.
@@ -115,11 +115,39 @@ function installResponseRewriters(rewriters) {
     })
 }
 
+// ── standalone/desktop: tromoSM inject.js, ported ──
+// Same request filter, fields and log lines as refs/SpotifyPremiumPatch/inject.js (docs/standalone.md).
+const OPERATIONS = ['accountAttributes'] /*add profileattr to arr for username and region editing*/
+
+const DESKTOP_REWRITERS = [{
+    label: 'accountAttributes',
+    url: /api-partner\.spotify\.com\/pathfinder\//,
+    body: body => { try { return OPERATIONS.includes(JSON.parse(body).operationName) } catch { return false } },
+    patch(response) {
+        const account = response?.data?.me?.account
+        if (!account?.product) {
+            console.warn(`${TAG} couldnt find the right object`)
+            return null
+        }
+        const oldProduct = account.product
+        const oldAds = account.attributes?.ads
+        account.product = 'PREMIUM'
+        // account.country='US'
+        if (account.attributes) {
+            account.attributes.catalogue = 'premium'
+            account.attributes.ads = false
+        }
+        console.log(`${TAG} modified account type from ${oldProduct} to ${account.product}`)
+        console.log(`${TAG} modified ad attribute from ${oldAds} to ${account.attributes?.ads}`)
+        return response
+    },
+}]
+
 // ── standalone/mobile: tromoSM's approach applied to the mobile web player ──
 // inject.js only knows the desktop accountAttributes query. The mobile player reads its product state from
 // @webgate/melody/v1/product_state instead (docs/web-player.md → "Mobile web player"), so the same idea (rewrite the
 // account response) is applied there. Mobile selectors compare product === "PREMIUM" and catalogue === "premium".
-const REWRITERS = [{
+const MOBILE_REWRITERS = [{
     label: 'product_state',
     url: /\/melody\/v1\/product_state(?:\?|$)/,
     patch(state) {
@@ -135,5 +163,6 @@ const REWRITERS = [{
 }]
 
 // ── standalone/main ──
-installResponseRewriters(REWRITERS)
+// Both players: their response URLs don't overlap, so whichever the server serves is covered
+installResponseRewriters([...DESKTOP_REWRITERS, ...MOBILE_REWRITERS])
 })()
