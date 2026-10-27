@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Spotify Premium (MOBILE)
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      1.1
+// @version      1.2
 // @description  Premium state, no ads and no upsell UI in the Spotify web player (own implementation) (mobile web player)
 // @author       realteamnet
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
@@ -23,7 +23,7 @@ Parts: src/lib/client.js, src/lib/response-rewrite.js, src/lib/bundle-patcher.js
 (function () {
 'use strict'
 
-const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.1"}
+const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.2"}
 const TAG = '[SpotifyPremium-MOBILE]'
 
 // ── lib/client: player version and page helpers ──
@@ -50,6 +50,38 @@ function addStyle(css) {
     const style = document.createElement('style')
     style.textContent = css
     ;(document.head ?? document.documentElement).appendChild(style)
+}
+
+// What to switch on so the userscript manager runs the script before the page's own scripts
+function earlyInjectionHelp() {
+    const handler = typeof GM_info === 'object' ? GM_info.scriptHandler ?? '' : ''
+    if (/violentmonkey/i.test(handler)) return 'ViolentMonkey dashboard → Settings → Advanced → turn on "Synchronous page mode"'
+    if (/tampermonkey/i.test(handler)) return 'Tampermonkey dashboard → Settings → Config mode: Advanced → Experimental → Inject Mode: Instant'
+    return ''
+}
+
+// A dismissible bar at the top of the page (textContent only: no markup from strings)
+function showNotice(title, text) {
+    const show = () => {
+        const bar = document.createElement('div')
+        bar.dataset.spNotice = '1'
+        bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:12px;align-items:flex-start;'
+            + 'padding:10px 14px;background:#b3261e;color:#fff;font:14px/1.4 system-ui,sans-serif;box-shadow:0 2px 8px #0008'
+        const msg = document.createElement('div')
+        msg.style.flex = '1'
+        const strong = document.createElement('strong')
+        strong.textContent = title
+        msg.append(strong, document.createElement('br'), text)
+        const close = document.createElement('button')
+        close.textContent = '×'
+        close.title = 'Dismiss'
+        close.style.cssText = 'background:none;border:0;color:#fff;font-size:22px;line-height:1;cursor:pointer;padding:0 4px'
+        close.onclick = () => bar.remove()
+        bar.append(msg, close)
+        document.body.append(bar)
+    }
+    if (document.body) show()
+    else document.addEventListener('DOMContentLoaded', show, { once: true })
 }
 
 // ── lib/response-rewrite: rewrite JSON API responses through fetch and XMLHttpRequest ──
@@ -215,7 +247,7 @@ function installBundlePatcher({ entry, rules }) {
     // ── rspackChunk hook ──
     // The runtime does: s = self.rspackChunk ||= []; s.forEach(handler); s.push = handler.bind(null, s.push.bind(s))
     const chunks = (window.rspackChunk ||= [])
-    if (chunks.push !== Array.prototype.push) console.warn(`${TAG} injected after the player started: chunks already loaded won't be patched`)
+    const runtimeStarted = chunks.push !== Array.prototype.push
     chunks.forEach(patchChunk)
     // Injected late, the runtime's push is already installed: keep it, or every later chunk would be swallowed
     let handler = Object.hasOwn(chunks, 'push') ? chunks.push : null
@@ -253,7 +285,9 @@ function installBundlePatcher({ entry, rules }) {
     }
 
     const isEntry = node => node.nodeName === 'SCRIPT' && !node.dataset?.sp && entry.test(node.src ?? '')
-    if ([...document.scripts].some(isEntry)) console.warn(`${TAG} injected after the entry bundle was parsed: it won't be patched`)
+    // Injected late (e.g. ViolentMonkey without "Synchronous page mode"): the entry already ran unpatched
+    const late = runtimeStarted || [...document.scripts].some(isEntry)
+    if (late) console.warn(`${TAG} injected after the entry bundle was parsed: the code patches won't apply, only the response layer`)
 
     // Firefox fires beforescriptexecute; elsewhere the MutationObserver catches the tag before it has loaded
     document.addEventListener('beforescriptexecute', e => { if (isEntry(e.target)) e.preventDefault() }, true)
@@ -268,7 +302,7 @@ function installBundlePatcher({ entry, rules }) {
         }
     }).observe(document, { childList: true, subtree: true })
 
-    return { stats, patchSource, rules: rules.map(r => ({ key: r.key, match: r.re.source, anchor: r.anchor, required: r.required })) }
+    return { late, stats, patchSource, rules: rules.map(r => ({ key: r.key, match: r.re.source, anchor: r.anchor, required: r.required })) }
 }
 
 // ── platform/mobile: the mobile web player (served to mobile user agents, e.g. Android / Hermit) ──
@@ -303,6 +337,13 @@ const OWN = {
 installResponseRewriters(OWN.rewriters)
 const patcher = installBundlePatcher({ entry: ENTRY, rules: compileRules(OWN.rules) })
 addStyle(OWN.css)
-window.SpotifyPremium = { build: BUILD, version: clientVersion(), rules: patcher.rules, stats: patcher.stats, patchSource: patcher.patchSource }
+window.SpotifyPremium = { build: BUILD, version: clientVersion(), late: patcher.late, rules: patcher.rules, stats: patcher.stats, patchSource: patcher.patchSource }
 console.log(`${TAG} active for client ${window.SpotifyPremium.version || 'unknown'}`)
+
+// Started too late: only the response layer works. Say which setting fixes it, when the manager has one
+if (patcher.late) {
+    const help = earlyInjectionHelp()
+    showNotice('Spotify Premium userscript started too late, so only part of it works.',
+        help ? `Fix: ${help}, then reload this page.` : 'Your browser ran the script after Spotify had loaded. Reload the page; if this keeps showing, the browser can\'t run it early enough.')
+}
 })()

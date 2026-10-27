@@ -33,6 +33,11 @@ response. Install **one** script per browser.
 Reload `open.spotify.com` afterwards. The browser console shows `[SpotifyPremium…]` messages when the patches apply.
 In the console, `SpotifyPremium.stats` shows how often each code patch matched.
 
+If a red bar at the top says the script **started too late**, your userscript manager ran it after Spotify had loaded.
+Only the account-state part works then. Turn on the setting the bar names and reload:
+- **ViolentMonkey (Chrome, Edge):** dashboard → Settings → Advanced → **Synchronous page mode**.
+- **Tampermonkey:** Settings → Config mode: Advanced → Experimental → **Inject Mode: Instant**.
+
 ## Hermit
 
 The `*-HERMIT` files are the mobile builds with a header Hermit accepts. Hermit doesn't support `@grant`, `@require` or
