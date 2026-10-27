@@ -12,9 +12,9 @@ Spotify serves a different player to desktop and mobile browsers, so pick the fi
 
 | File | Browser | Player |
 |------|---------|--------|
-| [`SpotifyPremium-DESKTOP.user.js`](SpotifyPremium-DESKTOP.user.js) | ViolentMonkey / Tampermonkey | desktop web player |
-| [`SpotifyPremium-MOBILE.user.js`](SpotifyPremium-MOBILE.user.js) | ViolentMonkey on Android (Firefox, Kiwi, …) | mobile web player |
-| [`SpotifyPremium-HERMIT.user.js`](SpotifyPremium-HERMIT.user.js) | [Hermit](https://hermit.chimbori.com/) (Android) | mobile web player. See [Hermit](#hermit) |
+| [`SpotifyPremium-DESKTOP.user.js`](https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-DESKTOP.user.js) | ViolentMonkey / Tampermonkey | desktop web player |
+| [`SpotifyPremium-MOBILE.user.js`](https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-MOBILE.user.js) | ViolentMonkey on Android (Firefox, Kiwi, …) | mobile web player |
+| [`SpotifyPremium-HERMIT.user.js`](https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-HERMIT.user.js) | [Hermit](https://hermit.chimbori.com/) (Android) | mobile web player. See [Hermit](#hermit) |
 
 `SpotifyPremium-*` is the main script. It patches two things:
 - **Account state:** the account-info response is rewritten so the client sees a premium account.
@@ -26,7 +26,7 @@ response. Install **one** script per browser.
 
 ## Install
 
-- **ViolentMonkey / Tampermonkey:** open the raw file (click a file above, then **Raw**) and confirm the install.
+- **ViolentMonkey / Tampermonkey:** click a file above (it opens the raw file) and confirm the install.
   Updates come from this repo automatically.
 - **Hermit:** see [Hermit](#hermit) below.
 
@@ -40,7 +40,7 @@ The `*-HERMIT` files are the mobile builds with a header Hermit accepts. Hermit 
 
 1. Create a Lite App for `https://open.spotify.com`.
 2. Hermit → **Settings** → **User Scripts** → **+**. Paste the full contents of `SpotifyPremium-HERMIT.user.js`
-   (open the file, tap **Raw**, copy everything), name it "Spotify Premium", and save.
+   (open [the raw file](https://raw.githubusercontent.com/realteamnet/SpotifyPremium/main/SpotifyPremium-HERMIT.user.js) and copy everything), name it "Spotify Premium", and save.
 3. In the Spotify Lite App: **Quick Settings** → **User Scripts** → tick "Spotify Premium". Then relaunch the Lite App.
 
 To update in Hermit, paste the new version over the old one (Hermit may not update scripts automatically). If your Lite App uses a desktop

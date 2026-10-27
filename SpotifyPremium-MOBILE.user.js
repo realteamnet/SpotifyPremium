@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Spotify Premium (MOBILE)
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      1.0
+// @version      1.1
 // @description  Premium state, no ads and no upsell UI in the Spotify web player (own implementation) (mobile web player)
 // @author       realteamnet
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
@@ -23,7 +23,7 @@ Parts: src/lib/client.js, src/lib/response-rewrite.js, src/lib/bundle-patcher.js
 (function () {
 'use strict'
 
-const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.0"}
+const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.1"}
 const TAG = '[SpotifyPremium-MOBILE]'
 
 // ── lib/client: player version and page helpers ──
@@ -217,7 +217,8 @@ function installBundlePatcher({ entry, rules }) {
     const chunks = (window.rspackChunk ||= [])
     if (chunks.push !== Array.prototype.push) console.warn(`${TAG} injected after the player started: chunks already loaded won't be patched`)
     chunks.forEach(patchChunk)
-    let handler = null
+    // Injected late, the runtime's push is already installed: keep it, or every later chunk would be swallowed
+    let handler = Object.hasOwn(chunks, 'push') ? chunks.push : null
     const rawPush = function (...items) { items.forEach(patchChunk); return Array.prototype.push.apply(chunks, items) }
     const handlerPush = function (...items) { items.forEach(patchChunk); return handler.apply(this, items) }
     Object.defineProperty(chunks, 'push', {
