@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Spotify Premium (MOBILE)
 // @namespace    https://github.com/realteamnet/SpotifyPremium
-// @version      1.2
+// @version      1.3
 // @description  Premium state, no ads and no upsell UI in the Spotify web player (own implementation) (mobile web player)
 // @author       realteamnet
 // @homepageURL  https://github.com/realteamnet/SpotifyPremium
@@ -23,7 +23,7 @@ Parts: src/lib/client.js, src/lib/response-rewrite.js, src/lib/bundle-patcher.js
 (function () {
 'use strict'
 
-const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.2"}
+const BUILD = {"script":"OWN","platform":"MOBILE","browser":"VM","version":"1.3"}
 const TAG = '[SpotifyPremium-MOBILE]'
 
 // ── lib/client: player version and page helpers ──
@@ -44,12 +44,14 @@ function compareVersions(a, b) {
     return 0
 }
 
-// <style> works at document-start: the CSP has no style-src
+// <style> works at document-start: the CSP has no style-src. Injected early enough, there's no <html> yet: wait for it
 function addStyle(css) {
     if (!css) return
     const style = document.createElement('style')
     style.textContent = css
-    ;(document.head ?? document.documentElement).appendChild(style)
+    const append = () => (document.head ?? document.documentElement).appendChild(style)
+    if (document.documentElement) return append()
+    new MutationObserver((_, obs) => { if (document.documentElement) { obs.disconnect(); append() } }).observe(document, { childList: true })
 }
 
 // What to switch on so the userscript manager runs the script before the page's own scripts
